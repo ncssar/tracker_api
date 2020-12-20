@@ -22,6 +22,7 @@ from flask import request, jsonify
 from flask_sslify import SSLify # require https to protect api key etc.
 # import sqlite3
 import json
+import time
 import sys
 import os
 from pathlib import Path
@@ -29,6 +30,8 @@ from pathlib import Path
 app = flask.Flask(__name__)
 sslify=SSLify(app) # require https
 app.config["DEBUG"] = True
+
+USERS=[]
 
 # see the help page for details on storing the API key as an env var:
 # https://help.pythonanywhere.com/pages/environment-variables-for-web-apps/
@@ -75,35 +78,41 @@ def require_appkey(view_function):
 ###############################
 
 
-# # response = jsonified list of dict and response code
-# @app.route('/api/v1/events/new', methods=['POST'])
-# @require_appkey
-# def api_newEvent():
-#     app.logger.info("new called")
-#     if not request.json:
-#         app.logger.info("no json")
-#         return "<h1>400</h1><p>Request has no json payload.</p>", 400
-#     if type(request.json) is str:
-#         d=json.loads(request.json)
-#     else: #kivy UrlRequest sends the dictionary itself
-#         d=request.json
-#     r=sdbNewEvent(d)
-#     app.logger.info("sending response from api_newEvent:"+str(r))
-#     return jsonify(r)
-
-
 @app.route('/', methods=['GET'])
 # @require_appkey
 def home():
     return '''<h1>AssignmentTracker Database API</h1>
 <p>API for interacting with the AssignmentTracker database</p>'''
 
-@app.route('/api/v1/init')
+# @app.route('/api/v1/init',methods=['POST'])
+# @require_appkey
+# def api_init():
+@app.route('/api/v1/join',methods=['POST'])
 @require_appkey
-def api_init():
-    tdbInit()
-    return '''<h1>AssignmentTracker Database API</h1>
-<p>Database initialized.</p>'''
+def api_join():
+    if not request.json:
+        app.logger.info("no json")
+        return "<h1>400</h1><p>teams/new POST: Request has no json payload.</p>", 400
+    if type(request.json) is str:
+        d=json.loads(request.json)
+    else: #kivy UrlRequest sends the dictionary itself
+        d=request.json
+    d['IP']=request.remote_addr
+    app.logger.info("join called with json:"+str(json.dumps(d)))
+    USERS.append(d)
+    # if len(USERS)==1:
+    if 'Init' in d.keys() and d['Init']==True:
+        serverName=request.environ['SERVER_NAME'] # normally just the IP address
+        app.logger.info("init called.")
+        app.logger.info("  server name: "+serverName)
+        tdbInit(serverName) # pass server IP to database code, so database code can determine WS destination
+        r="<h1>AssignmentTracker Database API</h1><p>You are the first node to join.  Database initialized.</p>"
+    else:
+        r="<h1>AssignmentTracker Database API</h1><p>You are now joined to the activity in progress.  Other nodes:</p><ul>"
+        for u in USERS:
+            r+="<li>"+u['NodeName']+" : "+u['IP']
+        r+="</ul>"
+    return r
 
 @app.route('/api/v1/teams',methods=['GET'])
 @require_appkey
@@ -111,11 +120,23 @@ def api_getTeams():
     app.logger.info("teams called")
     return jsonify(tdbGetTeams())
 
+@app.route('/api/v1/teams/view',methods=['GET'])
+@require_appkey
+def api_getTeamsView():
+    app.logger.info("teams view called")
+    return jsonify(tdbGetTeamsView())
+
 @app.route('/api/v1/assignments',methods=['GET'])
 @require_appkey
 def api_getAssignments():
     app.logger.info("assignments called")
     return jsonify(tdbGetAssignments())
+
+@app.route('/api/v1/assignments/view',methods=['GET'])
+@require_appkey
+def api_getAssignmentsView():
+    app.logger.info("assignments view called")
+    return jsonify(tdbGetAssignmentsView())
 
 @app.route('/api/v1/pairings',methods=['GET'])
 @require_appkey
@@ -138,6 +159,24 @@ def api_newTeam():
         app.logger.info("incorrect json")
         return "<h1>400</h1><p>teams/new POST: expected keys 'TeamName' and 'Resource' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
     return jsonify(tdbNewTeam(d['TeamName'],d['Resource']))
+
+@app.route('/api/v1/history',methods=['GET'])
+@require_appkey
+def api_getHistory():
+    app.logger.info("getHistory called")
+    return jsonify(tdbGetHistory())
+
+@app.route('/api/v1/since/<int:since>',methods=['GET'])
+@require_appkey
+def api_getAll(since):
+    app.logger.info("getAll called: since="+str(since))
+    d={}
+    d['timestamp']=str(round(time.time(),2))
+    d['Teams']=tdbGetTeams(since=since)
+    d['Assignments']=tdbGetAssignments(since=since)
+    d['Pairings']=tdbGetPairings(since=since)
+    d['History']=tdbGetHistory(since=since)
+    return jsonify(d)
 
 @app.route('/api/v1/assignments/new',methods=['POST'])
 @require_appkey
@@ -169,7 +208,8 @@ def api_newPairing():
     if not set(['AssignmentID','TeamID']).issubset(d):
         app.logger.info("incorrect json")
         return "<h1>400</h1><p>pairings/new POST: expected keys 'AssignmentID' and 'TeamID' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    return jsonify(tdbPair(d['AssignmentID'],d['TeamID']))
+    r=tdbPair(d['AssignmentID'],d['TeamID'])
+    return jsonify(r)
 
 @app.route('/api/v1/teams/<int:teamID>',methods=['GET'])
 @require_appkey
@@ -205,6 +245,12 @@ def api_setTeamStatusByID(teamID):
         return "<h1>400</h1><p>teams/"+str(teamID)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
     return jsonify(tdbSetTeamStatusByID(teamID,d['NewStatus']))
 
+@app.route('/api/v1/teams/<int:teamID>/history',methods=['GET'])
+@require_appkey
+def api_getTeamHistoryByID(teamID):
+    app.logger.info("teams/"+str(teamID)+"/history GET called")
+    return jsonify(tdbGetHistory(teamID=teamID))
+
 @app.route('/api/v1/assignments/<int:assignmentID>/status',methods=['PUT'])
 @require_appkey
 def api_setAssignmentStatusByID(assignmentID):
@@ -221,6 +267,12 @@ def api_setAssignmentStatusByID(assignmentID):
         return "<h1>400</h1><p>assignments/"+str(assignmentID)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
     return jsonify(tdbSetAssignmentStatusByID(assignmentID,d['NewStatus']))
 
+@app.route('/api/v1/asignments/<int:assignmentID>/history',methods=['GET'])
+@require_appkey
+def api_getAssignmentHistoryByID(assignmentID):
+    app.logger.info("assignment/"+str(teamID)+"/history GET called")
+    return jsonify(tdbGetHistory(assignmentID=teamID))
+
 @app.route('/api/v1/pairings/<int:pairingID>/status',methods=['PUT'])
 @require_appkey
 def api_setPairingStatusByID(pairingID):
@@ -236,6 +288,12 @@ def api_setPairingStatusByID(pairingID):
         app.logger.info("incorrect json")
         return "<h1>400</h1><p>pairings/"+str(pairingID)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
     return jsonify(tdbSetPairingStatusByID(pairingID,d['NewStatus']))
+
+@app.route('/api/v1/pairings/<int:pairingID>/history',methods=['GET'])
+@require_appkey
+def api_getPairingHistoryByID(pairingID):
+    app.logger.info("pairing/"+str(pairingID)+"/history GET called")
+    return jsonify(tdbGetHistory(pairingID=pairingID))
 
 # def api_add_or_update(eventID):
 #     app.logger.info("put called for event "+str(eventID))
