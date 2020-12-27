@@ -20,7 +20,6 @@
 import flask
 from flask import request, jsonify
 from flask_sslify import SSLify # require https to protect api key etc.
-# import sqlite3
 import json
 import time
 import sys
@@ -77,16 +76,20 @@ def require_appkey(view_function):
     return decorated_function
 ###############################
 
+# NOTE regarding ID values:
+# tid = team ID; aid = assignment ID; pid = pairing ID
+# these values are set to -1 when created on a client, or a positive integer when
+#  created on the host.  The positive integer id is sent to all clients
+#  as part of the new object http request response, whether the request was made
+#  by the creating client, or by sync.  So, if id is -1 in steady state, either host
+#  communication has been lost, or the host had an error, or there is no host.
+
 
 @app.route('/', methods=['GET'])
-# @require_appkey
 def home():
     return '''<h1>AssignmentTracker Database API</h1>
 <p>API for interacting with the AssignmentTracker database</p>'''
 
-# @app.route('/api/v1/init',methods=['POST'])
-# @require_appkey
-# def api_init():
 @app.route('/api/v1/join',methods=['POST'])
 @require_appkey
 def api_join():
@@ -205,175 +208,95 @@ def api_newPairing():
         d=json.loads(request.json)
     else: #kivy UrlRequest sends the dictionary itself
         d=request.json
-    if not set(['AssignmentID','TeamID']).issubset(d):
+    if not set(['aid','tid']).issubset(d):
         app.logger.info("incorrect json")
-        return "<h1>400</h1><p>pairings/new POST: expected keys 'AssignmentID' and 'TeamID' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    r=tdbPair(d['AssignmentID'],d['TeamID'])
+        return "<h1>400</h1><p>pairings/new POST: expected keys 'aid' and 'tid' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    r=tdbNewPairing(d['aid'],d['tid'])
     return jsonify(r)
 
-@app.route('/api/v1/teams/<int:teamID>',methods=['GET'])
+@app.route('/api/v1/teams/<int:tid>',methods=['GET'])
 @require_appkey
-def api_getTeam(teamID):
-    app.logger.info("teams/"+str(teamID)+" GET called")
-    return jsonify(tdbGetTeams(teamID))
+def api_getTeam(tid):
+    app.logger.info("teams/"+str(tid)+" GET called")
+    return jsonify(tdbGetTeams(tid))
 
-@app.route('/api/v1/assignments/<int:assignmentID>',methods=['GET'])
+@app.route('/api/v1/assignments/<int:aid>',methods=['GET'])
 @require_appkey
-def api_getAssignment(assignmentID):
-    app.logger.info("assignments/"+str(assignmentID)+" GET called")
-    return jsonify(tdbGetAssignments(assignmentID))
+def api_getAssignment(aid):
+    app.logger.info("assignments/"+str(aid)+" GET called")
+    return jsonify(tdbGetAssignments(aid))
 
-@app.route('/api/v1/pairings/<int:pairingID>',methods=['GET'])
+@app.route('/api/v1/pairings/<int:pid>',methods=['GET'])
 @require_appkey
-def api_getPairing(pairingID):
-    app.logger.info("pairings/"+str(pairingID)+" GET called")
-    return jsonify(tdbGetPairings(pairingID))
+def api_getPairing(pid):
+    app.logger.info("pairings/"+str(pid)+" GET called")
+    return jsonify(tdbGetPairings(pid))
 
-@app.route('/api/v1/teams/<int:teamID>/status',methods=['PUT'])
+@app.route('/api/v1/teams/<int:tid>/status',methods=['PUT'])
 @require_appkey
-def api_setTeamStatusByID(teamID):
-    app.logger.info("teams/"+str(teamID)+"/status PUT called")
+def api_setTeamStatusByID(tid):
+    app.logger.info("teams/"+str(tid)+"/status PUT called")
     if not request.json:
         app.logger.info("no json")
-        return "<h1>400</h1><p>teams/"+str(teamID)+"/status PUT: Request has no json payload.</p>", 400
+        return "<h1>400</h1><p>teams/"+str(tid)+"/status PUT: Request has no json payload.</p>", 400
     if type(request.json) is str:
         d=json.loads(request.json)
     else: #kivy UrlRequest sends the dictionary itself
         d=request.json
     if not set(['NewStatus']).issubset(d):
         app.logger.info("incorrect json")
-        return "<h1>400</h1><p>teams/"+str(teamID)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    return jsonify(tdbSetTeamStatusByID(teamID,d['NewStatus']))
+        return "<h1>400</h1><p>teams/"+str(tid)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    return jsonify(tdbSetTeamStatusByID(tid,d['NewStatus']))
 
-@app.route('/api/v1/teams/<int:teamID>/history',methods=['GET'])
+@app.route('/api/v1/teams/<int:tid>/history',methods=['GET'])
 @require_appkey
-def api_getTeamHistoryByID(teamID):
-    app.logger.info("teams/"+str(teamID)+"/history GET called")
-    return jsonify(tdbGetHistory(teamID=teamID))
+def api_getTeamHistoryByID(tid):
+    app.logger.info("teams/"+str(tid)+"/history GET called")
+    return jsonify(tdbGetHistory(tid=tid))
 
-@app.route('/api/v1/assignments/<int:assignmentID>/status',methods=['PUT'])
+@app.route('/api/v1/assignments/<int:aid>/status',methods=['PUT'])
 @require_appkey
-def api_setAssignmentStatusByID(assignmentID):
-    app.logger.info("assignments/"+str(assignmentID)+"/status PUT called")
+def api_setAssignmentStatusByID(aid):
+    app.logger.info("assignments/"+str(aid)+"/status PUT called")
     if not request.json:
         app.logger.info("no json")
-        return "<h1>400</h1><p>assignments/"+str(assignmentID)+"/status PUT: Request has no json payload.</p>", 400
+        return "<h1>400</h1><p>assignments/"+str(aid)+"/status PUT: Request has no json payload.</p>", 400
     if type(request.json) is str:
         d=json.loads(request.json)
     else: #kivy UrlRequest sends the dictionary itself
         d=request.json
     if not set(['NewStatus']).issubset(d):
         app.logger.info("incorrect json")
-        return "<h1>400</h1><p>assignments/"+str(assignmentID)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    return jsonify(tdbSetAssignmentStatusByID(assignmentID,d['NewStatus']))
+        return "<h1>400</h1><p>assignments/"+str(aid)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    return jsonify(tdbSetAssignmentStatusByID(aid,d['NewStatus']))
 
-@app.route('/api/v1/asignments/<int:assignmentID>/history',methods=['GET'])
+@app.route('/api/v1/asignments/<int:aid>/history',methods=['GET'])
 @require_appkey
-def api_getAssignmentHistoryByID(assignmentID):
-    app.logger.info("assignment/"+str(teamID)+"/history GET called")
-    return jsonify(tdbGetHistory(assignmentID=teamID))
+def api_getAssignmentHistoryByID(aid):
+    app.logger.info("assignment/"+str(aid)+"/history GET called")
+    return jsonify(tdbGetHistory(aid=aid))
 
-@app.route('/api/v1/pairings/<int:pairingID>/status',methods=['PUT'])
+@app.route('/api/v1/pairings/<int:pid>/status',methods=['PUT'])
 @require_appkey
-def api_setPairingStatusByID(pairingID):
-    app.logger.info("pairings/"+str(pairingID)+"/status PUT called")
+def api_setPairingStatusByID(pid):
+    app.logger.info("pairings/"+str(pid)+"/status PUT called")
     if not request.json:
         app.logger.info("no json")
-        return "<h1>400</h1><p>pairings/"+str(pairingID)+"/status PUT: Request has no json payload.</p>", 400
+        return "<h1>400</h1><p>pairings/"+str(pid)+"/status PUT: Request has no json payload.</p>", 400
     if type(request.json) is str:
         d=json.loads(request.json)
     else: #kivy UrlRequest sends the dictionary itself
         d=request.json
     if not set(['NewStatus']).issubset(d):
         app.logger.info("incorrect json")
-        return "<h1>400</h1><p>pairings/"+str(pairingID)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    return jsonify(tdbSetPairingStatusByID(pairingID,d['NewStatus']))
+        return "<h1>400</h1><p>pairings/"+str(pid)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    return jsonify(tdbSetPairingStatusByID(pid,d['NewStatus']))
 
-@app.route('/api/v1/pairings/<int:pairingID>/history',methods=['GET'])
+@app.route('/api/v1/pairings/<int:pid>/history',methods=['GET'])
 @require_appkey
-def api_getPairingHistoryByID(pairingID):
-    app.logger.info("pairing/"+str(pairingID)+"/history GET called")
-    return jsonify(tdbGetHistory(pairingID=pairingID))
-
-# def api_add_or_update(eventID):
-#     app.logger.info("put called for event "+str(eventID))
-#     if not request.json:
-#         app.logger.info("no json")
-#         return "<h1>400</h1><p>Request has no json payload.</p>", 400
-#     if type(request.json) is str:
-#         d=json.loads(request.json)
-#     else: #kivy UrlRequest sends the dictionary itself
-#         d=request.json
-#     return jsonify(sdbAddOrUpdate(eventID,d))
-
-# @app.route('/api/v1/events',methods=['GET'])
-# @require_appkey
-# def api_getEvents():
-#     lastEditSince=request.args.get("lastEditSince",0)
-#     eventStartSince=request.args.get("eventStartSince",0)
-#     nonFinalizedOnly=request.args.get("nonFinalizedOnly",False)
-#     nonFinalizedOnly=str(nonFinalizedOnly).lower()=='true' # convert to boolean
-#     app.logger.info("events called: lastEditSince="+str(lastEditSince)
-#             +" eventStartSince="+str(eventStartSince)
-#             +" nonFinalizedOnly="+str(nonFinalizedOnly))
-#     # response = jsonified list
-#     return jsonify(sdbGetEvents(lastEditSince,eventStartSince,nonFinalizedOnly))
-
-
-# @app.route('/api/v1/events/<int:eventID>', methods=['GET'])
-# @require_appkey
-# def api_getEvent(eventID):
-#     return jsonify(sdbGetEvent(eventID))
-
-
-# @app.route('/api/v1/roster',methods=['GET'])
-# @require_appkey
-# def api_getRoster():
-#     app.logger.info("roster called")
-#     return jsonify(sdbGetRoster())
-
-
-# @app.route('/api/v1/events/<int:eventID>/html', methods=['GET'])
-# @require_appkey
-# def api_getEventHTML(eventID):
-#     return getEventHTML(eventID)
-
-
-# # it's cleaner to let the host decide whether to add or to update;
-# # if ID, Agency, Name, and InEpoch match those of an existing record,
-# #  then update that record; otherwise, add a new record;
-# # PUT seems like a better fit than POST based on the HTTP docs
-# #  note: only store inEpoch to the nearest hunredth of a second since
-# #  comparison beyond 5-digits-right-of-decimal has shown truncation differences
-
-# @app.route('/api/v1/events/<int:eventID>', methods=['PUT'])
-# @require_appkey
-# def api_add_or_update(eventID):
-#     app.logger.info("put called for event "+str(eventID))
-#     if not request.json:
-#         app.logger.info("no json")
-#         return "<h1>400</h1><p>Request has no json payload.</p>", 400
-#     if type(request.json) is str:
-#         d=json.loads(request.json)
-#     else: #kivy UrlRequest sends the dictionary itself
-#         d=request.json
-#     return jsonify(sdbAddOrUpdate(eventID,d))
-
-
-
-# # finalize: eventID = cloud database event ID
-# # 1. set the event to finalized
-# # 2. call sdbPush: if it's not a d4h activity, sdbPush will end early but cleanly
-
-# @app.route('/api/v1/finalize/<int:eventID>',methods=['POST'])
-# @require_appkey
-# def api_finalize(eventID):
-#     app.logger.info("finalize called for event "+str(eventID))
-#     rval=sdbPush(eventID)
-#     if rval["statusCode"]>299:
-#         return rval["message"],rval["statusCode"]
-#     return jsonify(rval)
-
+def api_getPairingHistoryByID(pid):
+    app.logger.info("pairing/"+str(pid)+"/history GET called")
+    return jsonify(tdbGetHistory(pid=pid))
 
 @app.errorhandler(404)
 def page_not_found(e):
