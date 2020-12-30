@@ -268,7 +268,10 @@ def api_setAssignmentStatusByID(aid):
     if not set(['NewStatus']).issubset(d):
         app.logger.info("incorrect json")
         return "<h1>400</h1><p>assignments/"+str(aid)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    return jsonify(tdbSetAssignmentStatusByID(aid,d['NewStatus']))
+    r=tdbSetAssignmentStatusByID(aid,d['NewStatus'])
+    if 'PushTables' in d.keys() and d['PushTables']=='True':
+        tdbPushTables()
+    return jsonify(r)
 
 @app.route('/api/v1/asignments/<int:aid>/history',methods=['GET'])
 @require_appkey
@@ -279,7 +282,6 @@ def api_getAssignmentHistoryByID(aid):
 @app.route('/api/v1/pairings/<int:pid>/status',methods=['PUT'])
 @require_appkey
 def api_setPairingStatusByID(pid):
-    app.logger.info("pairings/"+str(pid)+"/status PUT called")
     if not request.json:
         app.logger.info("no json")
         return "<h1>400</h1><p>pairings/"+str(pid)+"/status PUT: Request has no json payload.</p>", 400
@@ -290,6 +292,7 @@ def api_setPairingStatusByID(pid):
     if not set(['NewStatus']).issubset(d):
         app.logger.info("incorrect json")
         return "<h1>400</h1><p>pairings/"+str(pid)+"/status PUT: expected key 'NewStatus' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    app.logger.info("pairings/"+str(pid)+"/status PUT called: NewStatus="+str(d['NewStatus']))
     return jsonify(tdbSetPairingStatusByID(pid,d['NewStatus']))
 
 @app.route('/api/v1/pairings/<int:pid>/history',methods=['GET'])
