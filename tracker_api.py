@@ -172,7 +172,7 @@ def api_getHistory():
 @app.route('/api/v1/since/<int:since>',methods=['GET'])
 @require_appkey
 def api_getAll(since):
-    app.logger.info("getAll called: since="+str(since))
+    # app.logger.info("getAll called: since="+str(since))
     d={}
     d['timestamp']=str(round(time.time(),2))
     d['Teams']=tdbGetTeams(since=since)
@@ -271,6 +271,77 @@ def api_setAssignmentStatusByID(aid):
     r=tdbSetAssignmentStatusByID(aid,d['NewStatus'])
     if 'PushTables' in d.keys() and d['PushTables']=='True':
         tdbPushTables()
+    return jsonify(r)
+
+@app.route('/api/v1/assignments/<int:aid>/intendedResource',methods=['PUT'])
+@require_appkey
+def api_setAssignmentIntendedResourceByID(aid):
+    app.logger.info("assignments/"+str(aid)+"/intendedResource PUT called")
+    if not request.json:
+        app.logger.info("no json")
+        return "<h1>400</h1><p>assignments/"+str(aid)+"/intendedResource PUT: Request has no json payload.</p>", 400
+    if type(request.json) is str:
+        d=json.loads(request.json)
+    else: #kivy UrlRequest sends the dictionary itself
+        d=request.json
+    if not set(['IntendedResource']).issubset(d):
+        app.logger.info("incorrect json")
+        return "<h1>400</h1><p>assignments/"+str(aid)+"/intendedResource PUT: expected key 'IntendedResource' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    r=tdbSetAssignmentIntendedResourceByID(aid,d['IntendedResource'])
+    if 'PushTables' in d.keys() and d['PushTables']=='True':
+        tdbPushTables()
+    return jsonify(r)
+
+@app.route('/api/v1/teams/<int:tid>/resource',methods=['PUT'])
+@require_appkey
+def api_setTeamResourceByID(tid):
+    app.logger.info("teams/"+str(tid)+"/resource PUT called")
+    if not request.json:
+        app.logger.info("no json")
+        return "<h1>400</h1><p>assignments/"+str(tid)+"/resource PUT: Request has no json payload.</p>", 400
+    if type(request.json) is str:
+        d=json.loads(request.json)
+    else: #kivy UrlRequest sends the dictionary itself
+        d=request.json
+    if not set(['Resource']).issubset(d):
+        app.logger.info("incorrect json")
+        return "<h1>400</h1><p>teams/"+str(tid)+"/resource PUT: expected key 'Resource' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    r=tdbSetTeamResourceByID(tid,d['Resource'])
+    if 'PushTables' in d.keys() and d['PushTables']=='True':
+        tdbPushTables()
+    return jsonify(r)
+
+@app.route('/api/v1/teams/<int:tid>/medical',methods=['PUT'])
+@require_appkey
+def api_setTeamMedicalByID(tid):
+    app.logger.info("teams/"+str(tid)+"/medical PUT called")
+    if not request.json:
+        app.logger.info("no json")
+        return "<h1>400</h1><p>assignments/"+str(tid)+"/medical PUT: Request has no json payload.</p>", 400
+    if type(request.json) is str:
+        d=json.loads(request.json)
+    else: #kivy UrlRequest sends the dictionary itself
+        d=request.json
+    if not set(['Medical']).issubset(d):
+        app.logger.info("incorrect json")
+        return "<h1>400</h1><p>teams/"+str(tid)+"/medical PUT: expected key 'Medical' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
+    r=tdbSetTeamMedicalByID(tid,d['Medical'])
+    if 'PushTables' in d.keys() and d['PushTables']=='True':
+        tdbPushTables()
+    return jsonify(r)
+
+@app.route('/api/v1/assignments/<int:aid>/delete',methods=['PUT'])
+@require_appkey
+def api_deleteAssignmentByID(aid):
+    app.logger.info("assignments/"+str(aid)+"/delete PUT called")
+    r=tdbDeleteAssignment(aid)
+    return jsonify(r)
+
+@app.route('/api/v1/teams/<int:tid>/delete',methods=['PUT'])
+@require_appkey
+def api_deleteTeamByID(tid):
+    app.logger.info("teams/"+str(tid)+"/delete PUT called")
+    r=tdbDeleteTeam(tid)
     return jsonify(r)
 
 @app.route('/api/v1/asignments/<int:aid>/history',methods=['GET'])
