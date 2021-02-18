@@ -26,6 +26,32 @@ import sys
 import os
 from pathlib import Path
 
+### add this section in order to show log messages from imported modules
+###   as long as those modules do 'import logging' and e.g. 'logging.info(...)'
+###   modified from https://flask.palletsprojects.com/en/1.1.x/logging/#basic-configuration
+from logging.config import dictConfig
+
+# just send everything to stdout; sending to wsgi causes strange single-character
+#  error log lines in pythonanywhere; this dict is confirmed to work on localhost
+#  and also on pythonanywhere
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    }},
+    'handlers': {'default': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://sys.stdout',
+        'formatter': 'default'
+    }},
+    'loggers': {'': {
+        'level': 'INFO',
+        'handlers': ['default']
+    }}
+})
+### end of logging config section
+
+
 app = flask.Flask(__name__)
 sslify=SSLify(app) # require https
 app.config["DEBUG"] = True
@@ -195,7 +221,7 @@ def api_newAssignment():
     if not set(['AssignmentName','IntendedResource']).issubset(d):
         app.logger.info("incorrect json")
         return "<h1>400</h1><p>assignments/new POST: expected keys 'AssignmentName' and 'IntendedResource' in json payload.</p><p>"+json.dumps(d)+"</p>", 400
-    return jsonify(tdbNewAssignment(d['AssignmentName'],d['IntendedResource']))
+    return jsonify(tdbNewAssignment(name=d['AssignmentName'],intendedResource=d['IntendedResource'],sid=d.get('sid',None)))
 
 @app.route('/api/v1/pairings/new',methods=['POST'])
 @require_appkey
@@ -381,5 +407,7 @@ def page_not_found(e):
 #  check to see if the resolved path directory contains '/home'; this may
 #  need to change when LAN server is incorporated, since really it is just checking
 #  for linux vs windows
+
+# may need to wrap in "if __name == '__main__':" per https://help.pythonanywhere.com/pages/Flask504Error/
 if '/home' not in pr:
     app.run()
