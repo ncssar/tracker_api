@@ -410,4 +410,4 @@ def page_not_found(e):
 
 # may need to wrap in "if __name == '__main__':" per https://help.pythonanywhere.com/pages/Flask504Error/
 if '/home' not in pr:
-    app.run()
+    app.run(host='0.0.0.0')
